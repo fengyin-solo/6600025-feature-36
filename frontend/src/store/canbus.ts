@@ -1,7 +1,10 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
-import type { CanFrame, DbcMessage, BusStats } from '../types';
+import { ref, computed, watch } from 'vue';
+import type { CanFrame, DbcMessage, BusStats, FilterPreset } from '../types';
 import { parseDbc, decodeCanFrame, DEFAULT_DBC_CONTENT } from '../utils/dbc-parser';
+
+const FILTER_PRESETS_KEY = 'canbus_filter_presets';
+const LAST_FILTER_KEY = 'canbus_last_filter';
 
 let frameIdCounter = 0;
 
@@ -13,6 +16,65 @@ export const useCanBusStore = defineStore('canbus', () => {
   const filterText = ref('');
   const isCapturing = ref(false);
   const pollInterval = ref<number | null>(null);
+  const filterPresets = ref<FilterPreset[]>(loadFilterPresets());
+  let presetIdCounter = 0;
+
+  function loadFilterPresets(): FilterPreset[] {
+    try {
+      const saved = localStorage.getItem(FILTER_PRESETS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          presetIdCounter = parsed.reduce((max, p) => {
+            const num = parseInt(p.id.replace('preset-', '')) || 0;
+            return Math.max(max, num);
+          }, 0);
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load filter presets:', e);
+    }
+    return [];
+  }
+
+  function saveFilterPresetsToStorage() {
+    try {
+      localStorage.setItem(FILTER_PRESETS_KEY, JSON.stringify(filterPresets.value));
+    } catch (e) {
+      console.error('Failed to save filter presets:', e);
+    }
+  }
+
+  function loadLastFilter() {
+    try {
+      const saved = localStorage.getItem(LAST_FILTER_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.filterId !== undefined) filterId.value = parsed.filterId;
+        if (parsed.filterText !== undefined) filterText.value = parsed.filterText;
+      }
+    } catch (e) {
+      console.error('Failed to load last filter:', e);
+    }
+  }
+
+  function saveLastFilter() {
+    try {
+      localStorage.setItem(LAST_FILTER_KEY, JSON.stringify({
+        filterId: filterId.value,
+        filterText: filterText.value
+      }));
+    } catch (e) {
+      console.error('Failed to save last filter:', e);
+    }
+  }
+
+  loadLastFilter();
+
+  watch([filterId, filterText], () => {
+    saveLastFilter();
+  });
 
   const busStats = ref<BusStats>({
     totalFrames: 0,
@@ -196,12 +258,48 @@ export const useCanBusStore = defineStore('canbus', () => {
     return header + rows;
   }
 
+  function addFilterPreset(name: string): FilterPreset | null {
+    if (!name.trim()) return null;
+    const preset: FilterPreset = {
+      id: `preset-${++presetIdCounter}`,
+      name: name.trim(),
+      filterId: filterId.value,
+      filterText: filterText.value,
+      createdAt: Date.now()
+    };
+    filterPresets.value.push(preset);
+    saveFilterPresetsToStorage();
+    return preset;
+  }
+
+  function removeFilterPreset(id: string) {
+    const idx = filterPresets.value.findIndex(p => p.id === id);
+    if (idx !== -1) {
+      filterPresets.value.splice(idx, 1);
+      saveFilterPresetsToStorage();
+    }
+  }
+
+  function applyFilterPreset(id: string) {
+    const preset = filterPresets.value.find(p => p.id === id);
+    if (preset) {
+      filterId.value = preset.filterId;
+      filterText.value = preset.filterText;
+    }
+  }
+
+  function clearFilter() {
+    filterId.value = '';
+    filterText.value = '';
+  }
+
   return {
     frames,
     signals,
     dbcMessages,
     filterId,
     filterText,
+    filterPresets,
     busStats,
     isCapturing,
     filteredFrames,
@@ -213,6 +311,10 @@ export const useCanBusStore = defineStore('canbus', () => {
     startCapture,
     stopCapture,
     decodeFrame,
-    exportFrames
+    exportFrames,
+    addFilterPreset,
+    removeFilterPreset,
+    applyFilterPreset,
+    clearFilter
   };
 });

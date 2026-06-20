@@ -36,3 +36,11 @@ export interface BusStats {
   busLoad: number;
   lastUpdate: number;
 }
+
+export interface FilterPreset {
+  id: string;
+  name: string;
+  filterId: string;
+  filterText: string;
+  createdAt: number;
+}

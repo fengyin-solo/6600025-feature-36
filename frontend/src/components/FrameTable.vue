@@ -4,6 +4,45 @@ import { useCanBusStore } from '../store/canbus';
 
 const store = useCanBusStore();
 const selectedFrameId = ref<string | null>(null);
+const showPresetDialog = ref(false);
+const newPresetName = ref('');
+const showPresetList = ref(false);
+
+const hasActiveFilter = computed(() => {
+  return store.filterId.trim() !== '' || store.filterText.trim() !== '';
+});
+
+function openSavePresetDialog() {
+  newPresetName.value = '';
+  showPresetDialog.value = true;
+}
+
+function savePreset() {
+  if (newPresetName.value.trim()) {
+    store.addFilterPreset(newPresetName.value);
+    showPresetDialog.value = false;
+    newPresetName.value = '';
+  }
+}
+
+function cancelSavePreset() {
+  showPresetDialog.value = false;
+  newPresetName.value = '';
+}
+
+function togglePresetList() {
+  showPresetList.value = !showPresetList.value;
+}
+
+function applyPreset(id: string) {
+  store.applyFilterPreset(id);
+  showPresetList.value = false;
+}
+
+function deletePreset(id: string, e: Event) {
+  e.stopPropagation();
+  store.removeFilterPreset(id);
+}
 
 const selectedFrame = computed(() => {
   if (!selectedFrameId.value) return null;
@@ -81,14 +120,123 @@ function getSignalUnit(name: string): string {
       </div>
     </div>
 
-    <!-- Search Input -->
-    <div class="px-4 py-2 bg-gray-800 border-b border-gray-700">
-      <input
-        v-model="store.filterText"
-        type="text"
-        placeholder="搜索 CAN ID 或信号名称..."
-        class="w-full px-3 py-1.5 bg-gray-900 border border-gray-600 rounded text-gray-100 text-sm placeholder-gray-500 focus:outline-none focus:border-cyan-500"
-      />
+    <!-- Search & Filter Area -->
+    <div class="px-4 py-2 bg-gray-800 border-b border-gray-700 space-y-2">
+      <div class="flex gap-2">
+        <input
+          v-model="store.filterId"
+          type="text"
+          placeholder="CAN ID 过滤 (如: 7DF)..."
+          class="flex-1 px-3 py-1.5 bg-gray-900 border border-gray-600 rounded text-gray-100 text-sm placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+        />
+        <input
+          v-model="store.filterText"
+          type="text"
+          placeholder="搜索信号名称或数据..."
+          class="flex-1 px-3 py-1.5 bg-gray-900 border border-gray-600 rounded text-gray-100 text-sm placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+        />
+        <button
+          v-if="hasActiveFilter"
+          @click="store.clearFilter()"
+          class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded transition-colors border border-gray-600 shrink-0"
+          title="清除筛选"
+        >
+          ✕
+        </button>
+        <div class="relative shrink-0">
+          <button
+            @click="togglePresetList"
+            class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded transition-colors border border-gray-600 flex items-center gap-1"
+            title="收藏的筛选方案"
+          >
+            <span>★</span>
+            <span v-if="store.filterPresets.length > 0" class="text-xs text-cyan-400">{{ store.filterPresets.length }}</span>
+          </button>
+          <div
+            v-if="showPresetList"
+            class="absolute right-0 top-full mt-1 w-64 bg-gray-900 border border-gray-600 rounded shadow-lg z-50 max-h-64 overflow-auto"
+          >
+            <div class="px-3 py-2 border-b border-gray-700 text-xs text-gray-400 flex items-center justify-between">
+              <span>收藏的筛选方案</span>
+              <button @click="showPresetList = false" class="text-gray-500 hover:text-gray-300">✕</button>
+            </div>
+            <div v-if="store.filterPresets.length === 0" class="px-3 py-4 text-center text-gray-500 text-sm">
+              暂无收藏方案
+            </div>
+            <div
+              v-for="preset in store.filterPresets"
+              :key="preset.id"
+              @click="applyPreset(preset.id)"
+              class="px-3 py-2 hover:bg-gray-800 cursor-pointer border-b border-gray-800 flex items-center justify-between group"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="text-sm text-gray-200 truncate">{{ preset.name }}</div>
+                <div class="text-xs text-gray-500 truncate">
+                  <span v-if="preset.filterId">ID: {{ preset.filterId }}</span>
+                  <span v-if="preset.filterId && preset.filterText"> | </span>
+                  <span v-if="preset.filterText">关键词: {{ preset.filterText }}</span>
+                </div>
+              </div>
+              <button
+                @click="deletePreset(preset.id, $event)"
+                class="ml-2 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="删除"
+              >
+                🗑
+              </button>
+            </div>
+          </div>
+        </div>
+        <button
+          @click="openSavePresetDialog"
+          class="px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white text-sm rounded transition-colors border border-cyan-600 shrink-0"
+          title="收藏当前筛选"
+        >
+          收藏
+        </button>
+      </div>
+    </div>
+
+    <!-- Save Preset Dialog -->
+    <div
+      v-if="showPresetDialog"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      @click.self="cancelSavePreset"
+    >
+      <div class="bg-gray-800 border border-gray-600 rounded-lg p-4 w-80 shadow-xl">
+        <h3 class="text-sm font-semibold text-gray-200 mb-3">收藏筛选方案</h3>
+        <input
+          v-model="newPresetName"
+          type="text"
+          placeholder="输入方案名称..."
+          class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-gray-100 text-sm placeholder-gray-500 focus:outline-none focus:border-cyan-500 mb-3"
+          @keyup.enter="savePreset"
+          autofocus
+        />
+        <div class="mb-3 text-xs text-gray-400">
+          <div>当前筛选条件:</div>
+          <div class="mt-1 space-y-0.5">
+            <div v-if="store.filterId">CAN ID: <span class="text-cyan-400">{{ store.filterId }}</span></div>
+            <div v-if="store.filterText">关键词: <span class="text-cyan-400">{{ store.filterText }}</span></div>
+            <div v-if="!hasActiveFilter" class="text-yellow-500">⚠ 当前无筛选条件</div>
+          </div>
+        </div>
+        <div class="flex gap-2 justify-end">
+          <button
+            @click="cancelSavePreset"
+            class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded transition-colors border border-gray-600"
+          >
+            取消
+          </button>
+          <button
+            @click="savePreset"
+            :disabled="!newPresetName.trim()"
+            class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-sm rounded transition-colors border border-cyan-500"
+          >
+            保存
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Frame Table -->

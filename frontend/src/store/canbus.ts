@@ -16,27 +16,29 @@ export const useCanBusStore = defineStore('canbus', () => {
   const filterText = ref('');
   const isCapturing = ref(false);
   const pollInterval = ref<number | null>(null);
-  const filterPresets = ref<FilterPreset[]>(loadFilterPresets());
-  let presetIdCounter = 0;
-
-  function loadFilterPresets(): FilterPreset[] {
+  function loadFilterPresets(): { presets: FilterPreset[]; maxId: number } {
+    const empty = { presets: [] as FilterPreset[], maxId: 0 };
     try {
       const saved = localStorage.getItem(FILTER_PRESETS_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          presetIdCounter = parsed.reduce((max, p) => {
-            const num = parseInt(p.id.replace('preset-', '')) || 0;
+          const maxId = parsed.reduce((max, p) => {
+            const num = parseInt(String(p.id).replace('preset-', '')) || 0;
             return Math.max(max, num);
           }, 0);
-          return parsed;
+          return { presets: parsed, maxId };
         }
       }
     } catch (e) {
       console.error('Failed to load filter presets:', e);
     }
-    return [];
+    return empty;
   }
+
+  const loadedPresets = loadFilterPresets();
+  const filterPresets = ref<FilterPreset[]>(loadedPresets.presets);
+  let presetIdCounter = loadedPresets.maxId;
 
   function saveFilterPresetsToStorage() {
     try {
